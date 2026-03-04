@@ -150,6 +150,8 @@ export default function PotteryApp() {
   const [newPost, setNewPost]         = useState("");
   const [showReply, setShowReply]     = useState({});
   const [replyText, setReplyText]     = useState({});
+  const [editingPost, setEditingPost] = useState(null); // post id being edited
+  const [editPostText, setEditPostText] = useState("");
 
   // Member auth (Firebase Authentication)
   const [member, setMember]               = useState(null);  // { uid, email, displayName }
@@ -452,6 +454,12 @@ export default function PotteryApp() {
   async function deletePost(id) {
     await fbDelete("posts",id);
     if (!dbRef.current) setPosts(p=>p.filter(x=>x.id!==id));
+  }
+  async function editPost(id, newContent) {
+    if (!newContent.trim()) return;
+    await fbUpdate("posts", id, { content: newContent.trim(), edited: true });
+    if (!dbRef.current) setPosts(p=>p.map(x=>x.id===id?{...x,content:newContent.trim(),edited:true}:x));
+    setEditingPost(null); setEditPostText("");
   }
   async function toggleOOO(id,current) {
     await fbUpdate("kilns",id,{outOfOrder:!current});
@@ -1481,7 +1489,10 @@ export default function PotteryApp() {
               <button className="btn bp sm" onClick={submitPost} disabled={!online}>{online?"Post":"Offline"}</button>
             </div>
           </div>
-          {sortedPosts.map(post=>(
+          {sortedPosts.map(post=>{
+            const isAuthor = member && (post.author===member.displayName || post.author===`${member.displayName} (Admin)`);
+            const isEditing = editingPost===post.id;
+            return (
             <div key={post.id} className="card" style={{padding:"1rem",marginBottom:".7rem",borderLeft:post.pinned?"3px solid #f59e0b":"1px solid var(--bdr)"}}>
               <div style={{display:"flex",gap:".62rem",marginBottom:".62rem",alignItems:"flex-start"}}>
                 <div className="av" style={{width:32,height:32,background:hColor(post.author),fontSize:".82rem"}}>{avLet(post.author)}</div>
@@ -1489,11 +1500,28 @@ export default function PotteryApp() {
                   <div style={{display:"flex",alignItems:"center",gap:".38rem",flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:".86rem"}}>{post.author}</span>
                     {post.pinned&&<span className="pinned-badge">📌 Pinned</span>}
-                    <span style={{fontSize:".7rem",color:"var(--pale)"}}>{post.time}</span>
+                    <span style={{fontSize:".7rem",color:"var(--pale)"}}>{post.time}{post.edited&&<span style={{fontStyle:"italic"}}> · edited</span>}</span>
                   </div>
                 </div>
+                {isAuthor && !isEditing && (
+                  <div style={{display:"flex",gap:".3rem",flexShrink:0}}>
+                    <button className="btn bg xs" onClick={()=>{setEditingPost(post.id);setEditPostText(post.content);}}>Edit</button>
+                    <button className="btn bd xs" onClick={()=>{if(window.confirm("Delete this post?"))deletePost(post.id);}}>Delete</button>
+                  </div>
+                )}
               </div>
-              <div style={{fontSize:".87rem",lineHeight:1.6,marginBottom:".7rem"}}>{post.content}</div>
+              {isEditing ? (
+                <div style={{marginBottom:".7rem"}}>
+                  <textarea value={editPostText} onChange={e=>setEditPostText(e.target.value)}
+                    style={{width:"100%",padding:".55rem .75rem",border:"1.5px solid var(--clay)",borderRadius:6,fontFamily:"'DM Sans',sans-serif",fontSize:".88rem",resize:"vertical",minHeight:72,outline:"none"}}/>
+                  <div style={{display:"flex",gap:".4rem",marginTop:".4rem"}}>
+                    <button className="btn bp sm" onClick={()=>editPost(post.id,editPostText)}>Save</button>
+                    <button className="btn bg sm" onClick={()=>{setEditingPost(null);setEditPostText("");}}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{fontSize:".87rem",lineHeight:1.6,marginBottom:".7rem"}}>{post.content}</div>
+              )}
               {post.replies?.map(r=>(
                 <div key={r.id} style={{marginLeft:"1.05rem",borderLeft:"2px solid #e8ddd0",paddingLeft:".8rem",marginBottom:".45rem"}}>
                   <div style={{display:"flex",gap:".38rem",alignItems:"center",marginBottom:".14rem"}}>
@@ -1514,7 +1542,8 @@ export default function PotteryApp() {
                 <button onClick={()=>setShowReply(p=>({...p,[post.id]:true}))} style={{background:"none",border:"none",cursor:"pointer",fontSize:".77rem",fontWeight:600,color:"var(--earth)",fontFamily:"'DM Sans',sans-serif"}}>↩ Reply</button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
