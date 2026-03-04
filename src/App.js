@@ -535,8 +535,9 @@ export default function PotteryApp() {
 
   async function submitPost() {
     if (!newPost.trim()) return;
-    const authorName = isAdmin ? `${adminUser.name} (Admin)` : "You";
-    const entry = { author:authorName, content:newPost.trim(), pinned:false, replies:[], time:"Just now", createdAt:now() };
+    const authorName = isAdmin ? `${adminUser.name} (Admin)` : (member?.displayName || "Member");
+    const uid = isAdmin ? null : (member?.uid || null);
+    const entry = { author:authorName, uid, content:newPost.trim(), pinned:false, replies:[], time:"Just now", createdAt:now() };
     await fbAdd("posts",entry);
     if (!dbRef.current) setPosts(p=>[{id:"p"+Date.now(),...entry},...p]);
     setNewPost("");
@@ -1490,7 +1491,13 @@ export default function PotteryApp() {
             </div>
           </div>
           {sortedPosts.map(post=>{
-            const isAuthor = member && (post.author===member.displayName || post.author===`${member.displayName} (Admin)`);
+            const isAuthor = isAdmin ||
+              (member && (
+                (post.uid && post.uid === member.uid) ||
+                post.author === member.displayName ||
+                post.author === `${member.displayName} (Admin)` ||
+                post.author === member.email
+              ));
             const isEditing = editingPost===post.id;
             return (
             <div key={post.id} className="card" style={{padding:"1rem",marginBottom:".7rem",borderLeft:post.pinned?"3px solid #f59e0b":"1px solid var(--bdr)"}}>
@@ -1505,6 +1512,11 @@ export default function PotteryApp() {
                 </div>
                 {isAuthor && !isEditing && (
                   <div style={{display:"flex",gap:".3rem",flexShrink:0}}>
+                    {isAdmin && (
+                      <button className={`btn xs ${post.pinned?"bw":"bg"}`} onClick={()=>togglePin(post.id,post.pinned)}>
+                        {post.pinned?"📌 Unpin":"📌 Pin"}
+                      </button>
+                    )}
                     <button className="btn bg xs" onClick={()=>{setEditingPost(post.id);setEditPostText(post.content);}}>Edit</button>
                     <button className="btn bd xs" onClick={()=>{if(window.confirm("Delete this post?"))deletePost(post.id);}}>Delete</button>
                   </div>
