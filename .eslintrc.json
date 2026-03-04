@@ -1,0 +1,1 @@
+{"extends":"react-app","rules":{"import/first":"off","no-unused-vars":"off"}}
