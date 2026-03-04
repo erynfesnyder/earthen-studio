@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, query, orderBy } from "firebase/firestore";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, query, orderBy, getDoc } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 
 // ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
@@ -153,14 +153,20 @@ export default function PotteryApp() {
 
   // Member auth (Firebase Authentication)
   const [member, setMember]               = useState(null);  // { uid, email, displayName }
-  const [authLoading, setAuthLoading]     = useState(true);  // true while Firebase checks session
+  const [authLoading, setAuthLoading]     = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode]           = useState("signin"); // "signin" | "signup"
+  const [authMode, setAuthMode]           = useState("signin");
   const [authEmail, setAuthEmail]         = useState("");
   const [authPassword, setAuthPassword]   = useState("");
   const [authName, setAuthName]           = useState("");
   const [authError, setAuthError]         = useState("");
   const [authLoading2, setAuthLoading2]   = useState(false);
+
+  // Member profile (stored in Firestore "members/{uid}")
+  const [profile, setProfile]         = useState({});
+  const [profileDraft, setProfileDraft] = useState(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg]   = useState("");
 
   // Admin auth
   const [adminUser, setAdminUser]         = useState(null); // { name, role }
@@ -226,12 +232,17 @@ export default function PotteryApp() {
         // Watch auth state — restores session automatically on page reload
         onAuthStateChanged(auth, async user => {
           if (user) {
-            // Reload ensures displayName is fresh after updateProfile
             await user.reload();
             const displayName = user.displayName || user.email.split("@")[0];
             setMember({ uid: user.uid, email: user.email, displayName });
+            try {
+              const snap = await getDoc(doc(fs, "members", user.uid));
+              if (snap.exists()) setProfile(snap.data());
+              else setProfile({});
+            } catch(e) { setProfile({}); }
           } else {
             setMember(null);
+            setProfile({});
           }
           setAuthLoading(false);
         });
@@ -497,6 +508,23 @@ export default function PotteryApp() {
     await cancelBooking(cancelTarget.id);
     setCancelTarget(null); setCancelName(""); setCancelPhone(""); setCancelError("");
   }
+  async function saveProfile(draft) {
+    if (!member) return;
+    setProfileSaving(true);
+    try {
+      if (draft.displayName?.trim() && draft.displayName.trim() !== member.displayName) {
+        await updateProfile(authRef.current.auth.currentUser, { displayName: draft.displayName.trim() });
+        setMember(m => ({ ...m, displayName: draft.displayName.trim() }));
+      }
+      await fbSet("members", member.uid, { ...draft, email: member.email, updatedAt: now() });
+      setProfile(draft);
+      setProfileDraft(null);
+      setProfileMsg("✓ Profile saved!");
+      setTimeout(() => setProfileMsg(""), 3000);
+    } catch(e) { setProfileMsg("Error saving — try again."); }
+    setProfileSaving(false);
+  }
+
   async function submitPost() {
     if (!newPost.trim()) return;
     const authorName = isAdmin ? `${adminUser.name} (Admin)` : "You";
@@ -576,7 +604,12 @@ export default function PotteryApp() {
           {/* Member avatar / sign in */}
           {!authLoading && (member
             ? <div style={{display:"flex",alignItems:"center",gap:".25rem"}}>
-                <div className="av" style={{width:24,height:24,background:hColor(member.displayName),fontSize:".65rem",flexShrink:0,cursor:"default"}} title={member.displayName}>{avLet(member.displayName)}</div>
+                <div className="av" style={{width:24,height:24,background:profile.photoUrl?"transparent":hColor(member.displayName),fontSize:".65rem",flexShrink:0,cursor:"pointer",overflow:"hidden"}}
+                  onClick={()=>setView("profile")} title="My Profile">
+                  {profile.photoUrl
+                    ? <img src={profile.photoUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    : avLet(member.displayName)}
+                </div>
                 <button className="nt" style={{fontSize:".7rem",padding:".3rem .45rem"}} onClick={handleSignOut}>Out</button>
               </div>
             : <button className="nt" style={{fontSize:".75rem",padding:".35rem .55rem"}} onClick={()=>{setShowAuthModal(true);setAuthError("");setAuthMode("signin");}}>Sign In</button>
@@ -1344,6 +1377,95 @@ export default function PotteryApp() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════
+          PROFILE VIEW
+      ════════════════════════════════════════════ */}
+      {!isAdmin && view==="profile" && (
+        <div style={{maxWidth:520,margin:"0 auto",padding:"1.25rem 1rem"}}>
+          <div style={{display:"flex",alignItems:"center",gap:".75rem",marginBottom:"1.25rem"}}>
+            <button className="btn bg sm" onClick={()=>setView("calendar")}>‹ Back</button>
+            <h2 style={{fontSize:"1.2rem",fontWeight:700}}>My Profile</h2>
+          </div>
+          {!member
+            ? <div className="alert a-warn">Please sign in to view your profile.</div>
+            : (() => {
+                const draft = profileDraft || { displayName: member.displayName, phone: profile.phone||"", bio: profile.bio||"", photoUrl: profile.photoUrl||"" };
+                const set = (k,v) => setProfileDraft(d => ({ ...(d || draft), [k]: v }));
+                return (
+                  <div>
+                    {/* Avatar */}
+                    <div style={{display:"flex",alignItems:"center",gap:"1rem",marginBottom:"1.25rem"}}>
+                      <div className="av" style={{width:72,height:72,fontSize:"1.6rem",background:draft.photoUrl?"transparent":hColor(member.displayName),flexShrink:0,overflow:"hidden",borderRadius:"50%"}}>
+                        {draft.photoUrl
+                          ? <img src={draft.photoUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>e.target.style.display="none"}/>
+                          : avLet(member.displayName)}
+                      </div>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:"1rem"}}>{member.displayName}</div>
+                        <div style={{fontSize:".78rem",color:"var(--pale)"}}>{member.email}</div>
+                      </div>
+                    </div>
+
+                    <div className="card" style={{padding:"1.35rem",marginBottom:"1rem"}}>
+                      <h4 style={{fontWeight:700,fontSize:".9rem",marginBottom:"1rem"}}>Edit Profile</h4>
+
+                      <div className="fl">
+                        <label>Display Name</label>
+                        <input value={draft.displayName||""} onChange={e=>set("displayName",e.target.value)} placeholder="Your name"/>
+                      </div>
+                      <div className="fl">
+                        <label>Phone Number</label>
+                        <input type="tel" value={draft.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="e.g. 512-555-0100"/>
+                      </div>
+                      <div className="fl">
+                        <label>Bio (optional)</label>
+                        <textarea value={draft.bio||""} onChange={e=>set("bio",e.target.value)} placeholder="Tell the studio a little about yourself…"/>
+                      </div>
+                      <div className="fl">
+                        <label>Profile Photo URL (optional)</label>
+                        <input value={draft.photoUrl||""} onChange={e=>set("photoUrl",e.target.value)} placeholder="Paste a direct image link (https://...)"/>
+                        <div style={{fontSize:".71rem",color:"var(--pale)",marginTop:".25rem"}}>Tip: upload to <strong>imgur.com</strong> and paste the direct link here.</div>
+                      </div>
+                      {draft.photoUrl && (
+                        <img src={draft.photoUrl} alt="preview" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"2px solid var(--bdr)",marginBottom:".75rem"}} onError={e=>e.target.style.display="none"}/>
+                      )}
+
+                      {profileMsg && <div className={`alert ${profileMsg.startsWith("✓")?"a-ok":"a-err"}`} style={{marginBottom:".75rem"}}>{profileMsg}</div>}
+                      <div style={{display:"flex",gap:".6rem"}}>
+                        <button className="btn bp" onClick={()=>saveProfile(draft)} disabled={profileSaving||!profileDraft}>
+                          {profileSaving?"Saving…":"Save Profile"}
+                        </button>
+                        {profileDraft && <button className="btn bg" onClick={()=>setProfileDraft(null)}>Discard</button>}
+                      </div>
+                    </div>
+
+                    {/* My bookings summary */}
+                    <div className="card" style={{padding:"1.35rem"}}>
+                      <h4 style={{fontWeight:700,fontSize:".9rem",marginBottom:".85rem"}}>My Bookings</h4>
+                      {active.filter(b=>b.uid===member.uid).length===0
+                        ? <div style={{fontSize:".84rem",color:"var(--pale)",fontStyle:"italic"}}>No bookings yet.</div>
+                        : active.filter(b=>b.uid===member.uid).slice(0,5).map(b=>{
+                            const k=kilns.find(k=>k.id===b.kilnId);
+                            return k?(
+                              <div key={b.id} style={{display:"flex",alignItems:"center",gap:".6rem",padding:".55rem 0",borderBottom:"1px solid var(--bdr)"}}>
+                                <div style={{width:4,height:32,borderRadius:2,background:k.color,flexShrink:0}}/>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontWeight:600,fontSize:".84rem"}}>{k.name} — {b.type}</div>
+                                  <div style={{fontSize:".74rem",color:"var(--mid)"}}>🔒 {b.startDate} {fmtHr(b.startHour)} → 🔓 {b.endDate} {fmtHr(b.endHour??b.startHour+b.duration)}</div>
+                                </div>
+                                <button className="btn bd xs" onClick={()=>cancelBooking(b.id)}>Cancel</button>
+                              </div>
+                            ):null;
+                          })
+                      }
+                    </div>
+                  </div>
+                );
+              })()
+          }
         </div>
       )}
 
