@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, query, orderBy } from "firebase/firestore";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 
 // ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
@@ -214,15 +217,10 @@ export default function PotteryApp() {
   useEffect(() => {
     async function init() {
       try {
-        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-        const { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, query, orderBy, getDocs }
-          = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-        const { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail }
-          = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
         const app  = initializeApp(FIREBASE_CONFIG);
         const fs   = getFirestore(app);
         const auth = getAuth(app);
-        dbRef.current   = { fs, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, query, orderBy, getDocs };
+        dbRef.current   = { fs, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, query, orderBy };
         authRef.current = { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail };
 
         // Watch auth state — restores session automatically on page reload
