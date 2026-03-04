@@ -551,45 +551,45 @@ export default function PotteryApp() {
       {fbError && <div style={{background:"var(--warn-l)",borderBottom:"1px solid #fcd34d",padding:".4rem 1rem",fontSize:".76rem",color:"#92400e",textAlign:"center",fontWeight:500}}>📡 {fbError}</div>}
 
       {/* ── HEADER ── */}
-      <div style={{background:studioSettings.headerBg||"#1e120a",padding:"0 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:online?0:30,zIndex:50,boxShadow:"0 2px 14px rgba(0,0,0,.28)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:".65rem",padding:".65rem 0"}}>
+      <div style={{background:studioSettings.headerBg||"#1e120a",padding:"0 .75rem",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:online?0:30,zIndex:50,boxShadow:"0 2px 14px rgba(0,0,0,.28)",minHeight:52}}>
+        {/* Logo + name */}
+        <div style={{display:"flex",alignItems:"center",gap:".5rem",flexShrink:0}}>
           {studioSettings.logoUrl
-            ? <img src={studioSettings.logoUrl} alt="logo" style={{width:34,height:34,borderRadius:6,objectFit:"cover",flexShrink:0}} onError={e=>e.target.style.display="none"}/>
-            : <span style={{fontSize:"1.4rem"}}>{studioSettings.emoji||"🏺"}</span>
+            ? <img src={studioSettings.logoUrl} alt="logo" style={{width:28,height:28,borderRadius:5,objectFit:"cover",flexShrink:0}} onError={e=>e.target.style.display="none"}/>
+            : <span style={{fontSize:"1.2rem"}}>{studioSettings.emoji||"🏺"}</span>
           }
-          <div>
-            <div style={{fontSize:".95rem",fontWeight:700,color:"#f5f0e8"}}>{studioSettings.name||"Earthen Studio"}</div>
-            <div style={{fontSize:".6rem",fontWeight:600,color:"#c8a882",letterSpacing:".1em",textTransform:"uppercase"}}>{studioSettings.tagline||"Kiln Booking"}</div>
+          <div style={{lineHeight:1.1}}>
+            <div style={{fontSize:".85rem",fontWeight:700,color:"#f5f0e8",whiteSpace:"nowrap"}}>{studioSettings.name||"Earthen Studio"}</div>
+            <div style={{fontSize:".55rem",fontWeight:600,color:"#c8a882",letterSpacing:".08em",textTransform:"uppercase"}}>{studioSettings.tagline||"Kiln Booking"}</div>
           </div>
         </div>
-        <div style={{display:"flex",gap:".15rem",alignItems:"center"}}>
-          {[["calendar","📅","Calendar"],["board","💬","Community"],["messages","✉️","Messages"]].map(([v,ic,lb])=>(
-            <button key={v} className={`nt${view===v&&!isAdmin?" on":""}`} onClick={()=>{setView(v); if(isAdmin)setAdminUser(null);}}>
+
+        {/* Nav + auth */}
+        <div style={{display:"flex",alignItems:"center",gap:".1rem"}}>
+          {[["calendar","📅","Calendar"],["board","💬","Community"]].map(([v,ic,lb])=>(
+            <button key={v} className={`nt${view===v&&!isAdmin?" on":""}`} onClick={()=>{setView(v); if(isAdmin)setAdminUser(null);}}
+              style={{padding:".4rem .55rem"}}>
               <span>{ic}</span><span style={{display:"none"}} className="nav-label">{lb}</span>
             </button>
           ))}
-          <div style={{width:1,height:18,background:"rgba(255,255,255,.15)",margin:"0 .2rem"}}/>
-          {/* Member sign in/out */}
+          <div style={{width:1,height:16,background:"rgba(255,255,255,.15)",margin:"0 .15rem"}}/>
+          {/* Member avatar / sign in */}
           {!authLoading && (member
-            ? <div style={{display:"flex",alignItems:"center",gap:".35rem"}}>
-                <div className="av" style={{width:26,height:26,background:hColor(member.displayName),fontSize:".7rem",flexShrink:0}}>{avLet(member.displayName)}</div>
-                <span style={{fontSize:".78rem",color:"#c8a882",fontWeight:500,maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.displayName}</span>
-                <button className="nt" style={{fontSize:".72rem",padding:".3rem .55rem"}} onClick={handleSignOut}>Sign out</button>
+            ? <div style={{display:"flex",alignItems:"center",gap:".25rem"}}>
+                <div className="av" style={{width:24,height:24,background:hColor(member.displayName),fontSize:".65rem",flexShrink:0,cursor:"default"}} title={member.displayName}>{avLet(member.displayName)}</div>
+                <button className="nt" style={{fontSize:".7rem",padding:".3rem .45rem"}} onClick={handleSignOut}>Out</button>
               </div>
-            : <button className="nt" style={{fontSize:".78rem"}} onClick={()=>{setShowAuthModal(true);setAuthError("");setAuthMode("signin");}}>Sign In</button>
+            : <button className="nt" style={{fontSize:".75rem",padding:".35rem .55rem"}} onClick={()=>{setShowAuthModal(true);setAuthError("");setAuthMode("signin");}}>Sign In</button>
           )}
-          <div style={{width:1,height:18,background:"rgba(255,255,255,.15)",margin:"0 .2rem"}}/>
-          {isAdmin ? (
-            <div style={{display:"flex",alignItems:"center",gap:".4rem"}}>
-              <button className="nt on" style={{background:"var(--earth)",fontSize:".78rem",cursor:"default"}}>
-                ⚙️ {adminUser.name}
-                {adminUser.role==="superadmin" && <span className="super-tag" style={{marginLeft:".3rem"}}>super</span>}
-              </button>
-              <button className="nt" style={{fontSize:".75rem",color:"#c8a882"}} onClick={()=>setAdminUser(null)}>Sign out</button>
-            </div>
-          ) : (
-            <button className="nt" onClick={()=>{setShowAdminLogin(true);setLoginError("");}} style={{fontSize:".78rem"}}>⚙️ Admin</button>
-          )}
+          <div style={{width:1,height:16,background:"rgba(255,255,255,.15)",margin:"0 .15rem"}}/>
+          {/* Admin */}
+          {isAdmin
+            ? <div style={{display:"flex",alignItems:"center",gap:".25rem"}}>
+                <span style={{fontSize:".75rem",color:"#c8a882",fontWeight:600}}>⚙️ {adminUser.name}</span>
+                <button className="nt" style={{fontSize:".7rem",padding:".3rem .45rem"}} onClick={()=>setAdminUser(null)}>Out</button>
+              </div>
+            : <button className="nt" onClick={()=>{setShowAdminLogin(true);setLoginError("");}} style={{fontSize:".75rem",padding:".35rem .55rem"}}>⚙️</button>
+          }
         </div>
       </div>
 
@@ -607,7 +607,6 @@ export default function PotteryApp() {
               <input type="password" value={loginPass} onChange={e=>setLoginPass(e.target.value)} placeholder="Master password" onKeyDown={e=>e.key==="Enter"&&handleAdminLogin()}/>
             </div>
             {loginError && <div style={{color:"var(--danger)",fontSize:".82rem",marginBottom:".7rem",fontWeight:500}}>⚠ {loginError}</div>}
-            <div style={{fontSize:".72rem",color:"var(--pale)",marginBottom:".9rem",fontStyle:"italic"}}>Demo: name "Eryn", password "kiln1234"</div>
             <div style={{display:"flex",gap:".6rem"}}>
               <button className="btn bp" onClick={handleAdminLogin}>Login</button>
               <button className="btn bg" onClick={()=>setShowAdminLogin(false)}>Cancel</button>
