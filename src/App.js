@@ -17,7 +17,7 @@ const FIREBASE_CONFIG = {
 const MASTER_PASSWORD = "kiln1234";
 
 // ─── INITIAL SUPER ADMIN (seeded to Firestore on first run) ──────────────────
-const SEED_ADMIN = { name: "Eryn", role: "superadmin" };
+const SEED_ADMIN = { name: "Eryn", email: "erynsberger@gmail.com", role: "superadmin" };
 
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -170,15 +170,8 @@ export default function PotteryApp() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg]   = useState("");
 
-  // Admin auth
-  const [adminUser, setAdminUser]         = useState(null); // { name, role }
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [loginName, setLoginName]         = useState("");
-  const [loginPass, setLoginPass]         = useState("");
-  const [loginError, setLoginError]       = useState("");
-  const isAdmin = !!adminUser;
-
-  // Admin panel
+  // Admin — derived from member email matching admins collection
+  // No separate login needed
   const [adminTab, setAdminTab]       = useState("dashboard");
   const [editingKiln, setEditingKiln] = useState(null);
   const [kilnDraft, setKilnDraft]     = useState({});
@@ -211,6 +204,14 @@ export default function PotteryApp() {
   const dbRef   = useRef(null);
   const authRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  // Derive admin status from logged-in member's email
+  const adminRecord = member ? admins.find(a =>
+    a.email === member.email ||
+    a.name?.toLowerCase() === member.displayName?.toLowerCase()
+  ) : null;
+  const isAdmin = !!adminRecord;
+  const adminUser = adminRecord ? { name: member.displayName, role: adminRecord.role } : null;
 
   // ── Online ──
   useEffect(() => {
@@ -342,17 +343,6 @@ export default function PotteryApp() {
     } catch(e) { setAuthError("Couldn't send reset email. Check the address and try again."); }
   }
 
-  // ── Admin login ──
-  function handleAdminLogin() {
-    const trimmed = loginName.trim();
-    if (!trimmed) { setLoginError("Please enter your name."); return; }
-    if (loginPass !== MASTER_PASSWORD) { setLoginError("Incorrect password."); return; }
-    const match = admins.find(a => a.name.toLowerCase() === trimmed.toLowerCase());
-    if (!match) { setLoginError("Your name isn't on the admin list. Ask a superadmin to add you."); return; }
-    setAdminUser({ name: match.name, role: match.role });
-    setShowAdminLogin(false); setLoginName(""); setLoginPass(""); setLoginError("");
-  }
-
   // ── Conflict detection (multi-day aware) ──
   // Bookings now store startTs and endTs as ISO strings for reliable comparison
   function toTs(date, hour) { return new Date(`${date}T${pad(hour)}:00:00`).getTime(); }
@@ -481,21 +471,24 @@ export default function PotteryApp() {
   }
 
   // ── Admin management ──
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+
   async function addAdmin() {
-    const name = newAdminName.trim();
-    if (!name) return;
-    if (admins.find(a=>a.name.toLowerCase()===name.toLowerCase())) { setAdminMsg("That name is already an admin."); return; }
-    const entry = { name, role: newAdminRole };
-    await fbSet("admins", name.toLowerCase(), entry);
+    const email = newAdminEmail.trim().toLowerCase();
+    if (!email) return;
+    if (admins.find(a=>a.email===email)) { setAdminMsg("That email is already an admin."); return; }
+    const entry = { email, role: newAdminRole };
+    await fbSet("admins", email.replace(/[.#$[\]]/g,"_"), entry);
     if (!dbRef.current) setAdmins(p=>[...p,entry]);
-    setNewAdminName(""); setAdminMsg(`✓ ${name} added as ${newAdminRole}.`);
+    setNewAdminEmail(""); setAdminMsg(`✓ ${email} added as ${newAdminRole}.`);
     setTimeout(()=>setAdminMsg(""),3000);
   }
-  async function removeAdmin(name) {
-    if (name.toLowerCase()===SEED_ADMIN.name.toLowerCase()) { setAdminMsg("Cannot remove the original superadmin."); setTimeout(()=>setAdminMsg(""),3000); return; }
-    await fbDelete("admins", name.toLowerCase());
-    if (!dbRef.current) setAdmins(p=>p.filter(a=>a.name!==name));
-    setAdminMsg(`${name} removed.`); setTimeout(()=>setAdminMsg(""),3000);
+  async function removeAdmin(email) {
+    if (email===SEED_ADMIN.email) { setAdminMsg("Cannot remove the original superadmin."); setTimeout(()=>setAdminMsg(""),3000); return; }
+    const key = email.replace(/[.#$[\]]/g,"_");
+    await fbDelete("admins", key);
+    if (!dbRef.current) setAdmins(p=>p.filter(a=>a.email!==email));
+    setAdminMsg(`${email} removed.`); setTimeout(()=>setAdminMsg(""),3000);
   }
 
   // ── Studio settings ──
@@ -536,7 +529,7 @@ export default function PotteryApp() {
   async function submitPost() {
     if (!newPost.trim()) return;
     const authorName = isAdmin ? `${adminUser.name} (Admin)` : (member?.displayName || "Member");
-    const uid = isAdmin ? null : (member?.uid || null);
+    const uid = member?.uid || null;
     const entry = { author:authorName, uid, content:newPost.trim(), pinned:false, replies:[], time:"Just now", createdAt:now() };
     await fbAdd("posts",entry);
     if (!dbRef.current) setPosts(p=>[{id:"p"+Date.now(),...entry},...p]);
@@ -604,13 +597,15 @@ export default function PotteryApp() {
         {/* Nav + auth */}
         <div style={{display:"flex",alignItems:"center",gap:".1rem"}}>
           {[["calendar","📅","Calendar"],["board","💬","Community"]].map(([v,ic,lb])=>(
-            <button key={v} className={`nt${view===v&&!isAdmin?" on":""}`} onClick={()=>{setView(v); if(isAdmin)setAdminUser(null);}}
+            <button key={v} className={`nt${view===v?" on":""}`} onClick={()=>setView(v)}
               style={{padding:".4rem .55rem"}}>
               <span>{ic}</span><span style={{display:"none"}} className="nav-label">{lb}</span>
             </button>
           ))}
+          {isAdmin && (
+            <button className={`nt${view==="admin"?" on":""}`} onClick={()=>setView("admin")} style={{padding:".4rem .55rem"}}>⚙️</button>
+          )}
           <div style={{width:1,height:16,background:"rgba(255,255,255,.15)",margin:"0 .15rem"}}/>
-          {/* Member avatar / sign in */}
           {!authLoading && (member
             ? <div style={{display:"flex",alignItems:"center",gap:".25rem"}}>
                 <div className="av" style={{width:24,height:24,background:profile.photoUrl?"transparent":hColor(member.displayName),fontSize:".65rem",flexShrink:0,cursor:"pointer",overflow:"hidden"}}
@@ -623,49 +618,18 @@ export default function PotteryApp() {
               </div>
             : <button className="nt" style={{fontSize:".75rem",padding:".35rem .55rem"}} onClick={()=>{setShowAuthModal(true);setAuthError("");setAuthMode("signin");}}>Sign In</button>
           )}
-          <div style={{width:1,height:16,background:"rgba(255,255,255,.15)",margin:"0 .15rem"}}/>
-          {/* Admin */}
-          {isAdmin
-            ? <div style={{display:"flex",alignItems:"center",gap:".25rem"}}>
-                <span style={{fontSize:".75rem",color:"#c8a882",fontWeight:600}}>⚙️ {adminUser.name}</span>
-                <button className="nt" style={{fontSize:".7rem",padding:".3rem .45rem"}} onClick={()=>setAdminUser(null)}>Out</button>
-              </div>
-            : <button className="nt" onClick={()=>{setShowAdminLogin(true);setLoginError("");}} style={{fontSize:".75rem",padding:".35rem .55rem"}}>⚙️</button>
-          }
         </div>
       </div>
-
-      {/* ── ADMIN LOGIN MODAL ── */}
-      {showAdminLogin && (
-        <div className="mo" onClick={()=>setShowAdminLogin(false)}>
-          <div className="md" style={{width:380}} onClick={e=>e.stopPropagation()}>
-            <h3 style={{fontWeight:700,fontSize:"1.05rem",marginBottom:"1.1rem"}}>🔐 Admin Login</h3>
-            <div className="fl">
-              <label>Your Name</label>
-              <input value={loginName} onChange={e=>setLoginName(e.target.value)} placeholder="e.g. Eryn" autoFocus onKeyDown={e=>e.key==="Enter"&&handleAdminLogin()}/>
-            </div>
-            <div className="fl">
-              <label>Studio Master Password</label>
-              <input type="password" value={loginPass} onChange={e=>setLoginPass(e.target.value)} placeholder="Master password" onKeyDown={e=>e.key==="Enter"&&handleAdminLogin()}/>
-            </div>
-            {loginError && <div style={{color:"var(--danger)",fontSize:".82rem",marginBottom:".7rem",fontWeight:500}}>⚠ {loginError}</div>}
-            <div style={{display:"flex",gap:".6rem"}}>
-              <button className="btn bp" onClick={handleAdminLogin}>Login</button>
-              <button className="btn bg" onClick={()=>setShowAdminLogin(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ════════════════════════════════════════════
           ADMIN PANEL
       ════════════════════════════════════════════ */}
-      {isAdmin && (
+      {isAdmin && view==="admin" && (
         <div style={{maxWidth:1060,margin:"0 auto",padding:"1.25rem 1rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
             <div>
               <h2 style={{fontSize:"1.2rem",fontWeight:700}}>⚙️ Admin Panel</h2>
-              <div style={{fontSize:".78rem",color:"var(--pale)"}}>Logged in as <strong>{adminUser.name}</strong> · {adminUser.role}</div>
+              <div style={{fontSize:".78rem",color:"var(--pale)"}}>Signed in as <strong>{adminUser.name}</strong> · {adminUser.role}</div>
             </div>
           </div>
 
@@ -907,16 +871,16 @@ export default function PotteryApp() {
               {/* Current admins */}
               <div style={{display:"grid",gap:".5rem",marginBottom:"1.1rem"}}>
                 {admins.map(a=>(
-                  <div key={a.name} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".68rem .9rem",background:"white",borderRadius:8,border:"1px solid var(--bdr)"}}>
-                    <div className="av" style={{width:32,height:32,background:hColor(a.name),fontSize:".8rem"}}>{avLet(a.name)}</div>
+                  <div key={a.email||a.name} style={{display:"flex",alignItems:"center",gap:".7rem",padding:".68rem .9rem",background:"white",borderRadius:8,border:"1px solid var(--bdr)"}}>
+                    <div className="av" style={{width:32,height:32,background:hColor(a.email||a.name),fontSize:".8rem"}}>{avLet(a.email||a.name)}</div>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:".88rem",display:"flex",alignItems:"center",gap:".4rem"}}>
-                        {a.name}
+                        {a.email||a.name}
                         {a.role==="superadmin"?<span className="super-tag">superadmin</span>:<span className="admin-tag">admin</span>}
                       </div>
                     </div>
-                    {a.name.toLowerCase()!==SEED_ADMIN.name.toLowerCase()&&(
-                      <button className="btn bd xs" onClick={()=>removeAdmin(a.name)}>Remove</button>
+                    {a.email!==SEED_ADMIN.email&&(
+                      <button className="btn bd xs" onClick={()=>removeAdmin(a.email||a.name)}>Remove</button>
                     )}
                   </div>
                 ))}
@@ -925,7 +889,7 @@ export default function PotteryApp() {
               {/* Add admin */}
               <div className="card" style={{padding:"1.2rem"}}>
                 <h4 style={{fontWeight:700,fontSize:".88rem",marginBottom:".85rem"}}>Add New Admin</h4>
-                <div className="fl"><label>Name (must match exactly when logging in)</label><input value={newAdminName} onChange={e=>setNewAdminName(e.target.value)} placeholder="e.g. Jamie" onKeyDown={e=>e.key==="Enter"&&addAdmin()}/></div>
+                <div className="fl"><label>Email address of new admin</label><input type="email" value={newAdminEmail} onChange={e=>setNewAdminEmail(e.target.value)} placeholder="e.g. jamie@gmail.com" onKeyDown={e=>e.key==="Enter"&&addAdmin()}/></div>
                 <div className="fl">
                   <label>Role</label>
                   <select value={newAdminRole} onChange={e=>setNewAdminRole(e.target.value)}>
@@ -1123,7 +1087,7 @@ export default function PotteryApp() {
       {/* ════════════════════════════════════════════
           CALENDAR VIEW
       ════════════════════════════════════════════ */}
-      {!isAdmin && view==="calendar" && (
+      {view==="calendar" && (
         <div style={{maxWidth:1060,margin:"0 auto",padding:"1.25rem 1rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
             <button className="btn bg sm" onClick={()=>{setCurrentDate(new Date(year,month-1,1));setSelectedDay(null);}}>‹ Prev</button>
@@ -1392,7 +1356,7 @@ export default function PotteryApp() {
       {/* ════════════════════════════════════════════
           PROFILE VIEW
       ════════════════════════════════════════════ */}
-      {!isAdmin && view==="profile" && (
+      {view==="profile" && (
         <div style={{maxWidth:520,margin:"0 auto",padding:"1.25rem 1rem"}}>
           <div style={{display:"flex",alignItems:"center",gap:".75rem",marginBottom:"1.25rem"}}>
             <button className="btn bg sm" onClick={()=>setView("calendar")}>‹ Back</button>
@@ -1481,7 +1445,7 @@ export default function PotteryApp() {
       {/* ════════════════════════════════════════════
           COMMUNITY BOARD
       ════════════════════════════════════════════ */}
-      {!isAdmin&&view==="board"&&(
+      {view==="board"&&(
         <div style={{maxWidth:680,margin:"0 auto",padding:"1.25rem 1rem"}}>
           <h2 style={{fontSize:"1.3rem",fontWeight:700,marginBottom:"1rem"}}>Community Board</h2>
           <div className="card" style={{padding:".9rem",marginBottom:"1rem"}}>
@@ -1491,13 +1455,13 @@ export default function PotteryApp() {
             </div>
           </div>
           {sortedPosts.map(post=>{
-            const isAuthor = isAdmin ||
-              (member && (
-                (post.uid && post.uid === member.uid) ||
-                post.author === member.displayName ||
-                post.author === `${member.displayName} (Admin)` ||
-                post.author === member.email
-              ));
+            const isAuthor = isAdmin || (member && (
+              post.uid === member.uid ||
+              post.author === member.displayName ||
+              post.author === `${member.displayName} (Admin)` ||
+              post.author === member.email ||
+              post.author === member.email.split("@")[0]
+            ));
             const isEditing = editingPost===post.id;
             return (
             <div key={post.id} className="card" style={{padding:"1rem",marginBottom:".7rem",borderLeft:post.pinned?"3px solid #f59e0b":"1px solid var(--bdr)"}}>
@@ -1562,7 +1526,7 @@ export default function PotteryApp() {
       {/* ════════════════════════════════════════════
           MESSAGES
       ════════════════════════════════════════════ */}
-      {!isAdmin&&view==="messages"&&(
+      {view==="messages"&&(
         <div style={{maxWidth:840,margin:"0 auto",padding:"1.25rem 1rem",display:"flex",gap:".85rem",height:"calc(100vh - 64px)"}}>
           <div className="card" style={{width:190,padding:".58rem",flexShrink:0}}>
             <div style={{fontWeight:700,fontSize:".7rem",color:"var(--pale)",textTransform:"uppercase",letterSpacing:".07em",padding:".18rem .42rem",marginBottom:".38rem"}}>Messages</div>
